@@ -1,0 +1,103 @@
+% --- Function Definitions ---
+function [audio, fs] = load_pcg_signal(filename)
+% Loads a PCG signal from an audio file.
+    try
+        [audio, fs] = audioread(filename);
+        % Ensure it's a single channel (mono)
+        if size(audio, 2) > 1
+            audio = mean(audio, 2);
+        end
+    catch ME
+        error('Error loading audio file: %s', ME.message);
+        audio = [];
+        fs = [];
+    end
+end
+
+function filtered_signal = butter_bandpass_filter(data, lowcut, highcut, fs, order)
+% Applies a Butterworth bandpass filter.
+    if nargin < 5
+        order = 5;
+    end
+    nyq = 0.5 * fs;
+    low = lowcut / nyq;
+    high = highcut / nyq;
+    [b, a] = butter(order, [low, high], 'bandpass');
+    filtered_signal = filter(b, a, data);
+end
+
+function energy_envelope = calculate_energy_envelope(signal)
+% Calculates the energy envelope of the signal.
+    energy_envelope = abs(signal).^2;
+end
+
+function heart_rate = calculate_heart_rate(energy_envelope, fs)
+% Estimates heart rate from the energy envelope.
+    [peaks, ~] = findpeaks(energy_envelope, 'MinPeakProminence', max(energy_envelope)/3); % Adjust prominence as needed
+    if length(peaks) < 2
+        heart_rate = NaN; % Not enough peaks to estimate
+        return;
+    end
+    peak_times = peaks / fs;
+    ibi = diff(peak_times);
+    if ~isempty(ibi)
+        heart_rate = 60 / mean(ibi);
+    else
+        heart_rate = NaN;
+    end
+end
+
+% --- Main Script ---
+
+% 1. Load PCG Signal
+[audio, fs] = load_pcg_signal('your_pcg_audio_file.wav'); % Replace with your audio file
+
+if ~isempty(audio) && ~isempty(fs)
+    % 2. Filtering Parameters
+    lowcut = 25;      % Hz
+    highcut = 600;     % Hz
+    filter_order = 5;
+
+    % 3. Apply Bandpass Filter
+    filtered_signal = butter_bandpass_filter(audio, lowcut, highcut, fs, filter_order);
+
+    % 4. Calculate Energy Envelope
+    energy_envelope = calculate_energy_envelope(filtered_signal);
+
+    % 5. Calculate Heart Rate
+    heart_rate = calculate_heart_rate(energy_envelope, fs);
+
+    % --- Display Results (Illustrative) ---
+
+    figure('Name', 'PCG Signal Analysis Output', 'NumberTitle', 'off');
+    sgtitle('PCG PROCESSING AND FILTERING IN DSP - ANALYSIS OUTPUT');
+
+    % Subplot 1: Filtered PCG Signal
+    subplot(2, 2, 1);
+    t_audio = (0:length(filtered_signal)-1) / fs;
+    plot(t_audio, filtered_signal);
+    xlabel('Time (s)');
+    ylabel('Amplitude');
+    title('[SMALL FILTERED WAVEFORM IMAGE]\nFILTERED PCG SIGNAL');
+
+    % Subplot 2: Energy Envelope
+    subplot(2, 2, 2);
+    t_envelope = (0:length(energy_envelope)-1) / fs;
+    plot(t_envelope, energy_envelope, 'r');
+    xlabel('Time (s)');
+    ylabel('Energy');
+    title('[SMALL ENERGY ENVELOPE IMAGE]\nENERGY ENVELOPE');
+
+    % Subplot 3: Heart Rate Display (Text)
+    subplot(2, 2, 3:4);
+    if ~isnan(heart_rate)
+        text(0.1, 0.5, sprintf('Text: **%.2f BPM**', heart_rate), 'FontSize', 14, 'FontWeight', 'bold');
+    else
+        text(0.1, 0.5, 'Text: **Could not estimate heart rate.**', 'FontSize', 14, 'FontWeight', 'bold');
+    end
+    axis off;
+    title('Heart Rate Display');
+
+else
+    disp('No audio file loaded.');
+end
