@@ -1,0 +1,108 @@
+import streamlit as st
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import butter, lfilter, find_peaks
+import librosa
+
+# --- Functions for PCG Processing ---
+
+def load_pcg_signal(uploaded_file):
+    """Loads a PCG signal from an uploaded file."""
+    if uploaded_file is not None:
+        try:
+            # Assuming the file is a WAV file
+            audio, sr = librosa.load(uploaded_file)
+            return audio, sr
+        except Exception as e:
+            st.error(f"Error loading audio file: {e}")
+            return None, None
+    return None, None
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    """Applies a Butterworth bandpass filter."""
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(order, [low, high], btype='band')
+    y = lfilter(b, a, data)
+    return y
+
+def calculate_energy_envelope(signal):
+    """Calculates the energy envelope of the signal."""
+    return np.abs(signal)**2
+
+def calculate_heart_rate(energy_envelope, sr):
+    """Estimates heart rate from the energy envelope."""
+    peaks, _ = find_peaks(energy_envelope, prominence=np.max(energy_envelope)/3) # Adjust prominence as needed
+    if len(peaks) < 2:
+        return None
+    peak_times = peaks / sr
+    ibi = np.diff(peak_times)
+    if len(ibi) > 0:
+        heart_rate = 60 / np.mean(ibi)
+        return heart_rate
+    else:
+        return None
+
+# --- Streamlit App ---
+
+st.title("PCG Signal Analysis")
+st.subheader("Illustrative Output")
+
+uploaded_file = st.file_uploader("Upload PCG Audio File (WAV)", type=["wav"])
+
+if uploaded_file is not None:
+    audio, sr = load_pcg_signal(uploaded_file)
+
+    if audio is not None and sr is not None:
+        st.sidebar.header("Filtering Parameters")
+        lowcut = st.sidebar.slider("Lowcut Frequency (Hz)", 20.0, 150.0, 25.0)
+        highcut = st.sidebar.slider("Highcut Frequency (Hz)", 150.0, 1000.0, 600.0)
+
+        # 1. Filtering
+        filtered_signal = butter_bandpass_filter(audio, lowcut, highcut, sr)
+
+        # 2. Energy Envelope
+        energy_envelope = calculate_energy_envelope(filtered_signal)
+
+        # 3. Heart Rate Calculation
+        heart_rate = calculate_heart_rate(energy_envelope, sr)
+
+        # --- Display Results ---
+        st.subheader("Analysis Output")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Filtered PCG Signal**")
+            fig_waveform, ax_waveform = plt.subplots(figsize=(8, 2))
+            times = np.linspace(0, len(filtered_signal) / sr, len(filtered_signal))
+            ax_waveform.plot(times, filtered_signal)
+            ax_waveform.set_xlabel("Time (s)")
+            ax_waveform.set_ylabel("Amplitude")
+            st.pyplot(fig_waveform)
+            st.markdown("[SMALL FILTERED WAVEFORM IMAGE]")
+            st.write("FILTERED PCG SIGNAL")
+
+        with col2:
+            st.markdown("**Energy Envelope**")
+            fig_envelope, ax_envelope = plt.subplots(figsize=(8, 2))
+            times_env = np.linspace(0, len(energy_envelope) / sr, len(energy_envelope))
+            ax_envelope.plot(times_env, energy_envelope, color='orange')
+            ax_envelope.set_xlabel("Time (s)")
+            ax_envelope.set_ylabel("Energy")
+            st.pyplot(fig_envelope)
+            st.markdown("[SMALL ENERGY ENVELOPE IMAGE]")
+            st.write("ENERGY ENVELOPE")
+
+        st.markdown("**Heart Rate Display**")
+        if heart_rate is not None:
+            st.markdown(f"Text: **{heart_rate:.2f} BPM**")
+        else:
+            st.warning("Could not estimate heart rate.")
+        st.write("Heart Rate Display")
+
+        st.subheader("PCG PROCESSING AND FILTERING IN DSP")
+        st.write("ANALYSIS OUTPUT")
+
+else:
+    st.info("Please upload a PCG audio file to start the analysis.")
