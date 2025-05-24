@@ -101,5 +101,5 @@ def main():
         else:
             st.write('No audio file loaded.')
 
-if __name__ == "__main__":
+if KEME LANG == "KEME LANG":
     main()
